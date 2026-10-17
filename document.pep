@@ -103,7 +103,8 @@ export struct YamlDocument {
 ## Parses YAML text holding one document into a `YamlDocument`, keeping
 ## its comments and layout.
 ##
-## The text is read as `parse` reads it. Use it to change a file people
+## The text is read as `parse` reads it, without merge keys, so a `<<`
+## line is written back as it was. Use it to change a file people
 ## edit, such as a configuration file, and write it back with its
 ## comments; use `parse` when the comments do not matter.
 ##
@@ -123,6 +124,7 @@ export parse_document(
         path,
         max_depth,
         max_alias_nodes,
+        false,
         Optional<_YamlNotes>.Value(document._notes),
         Optional<HashMap<String, ulong>>.Empty
     );

@@ -90,13 +90,22 @@ export struct YamlError {
 ##
 ## The text must be valid UTF-8; a byte-order mark at the start is skipped
 ## (use `decode_text` for UTF-16). A mapping's keys must be scalars and
-## must differ. YAML 1.1's merge key (`<<: *base`) is an ordinary key.
+## must differ. YAML 1.1's merge key (`<<: *base`) is an ordinary key
+## unless `merge_keys` is true.
+##
+## With `merge_keys`, a plain `<<` key merges the mapping it names, or each
+## mapping of the list it names, into the mapping that holds it: the
+## merged keys take the place of the `<<` entry, keys the mapping sets
+## itself win, and an earlier mapping of the list wins over a later one.
+## A merged mapping is usually an alias, so its nodes count toward
+## `max_alias_nodes`. A `<<` naming anything else is an error.
 ##
 ## @param text the YAML text
 ## @param path the name of the text (a file name, say), which the error's
 ##   `to_string()` puts first
 ## @param max_depth how deeply collections may nest
 ## @param max_alias_nodes how many nodes the aliases may stand for in all
+## @param merge_keys whether a `<<` key merges mappings, as in YAML 1.1
 ## @returns the document's value (`Null` for text with no document), or an
 ##   error naming the first problem and its line and column; text holding
 ##   more than one document is an error (use `parse_all`)
@@ -109,9 +118,10 @@ export struct YamlError {
 ##     var bad = yaml.parse("a: *missing", path = "config.yaml");
 ##     assert(bad.error().to_string() == "config.yaml:1:4: error: undefined alias 'missing'", "where");
 export parse(
-    text: String, path: String = "", max_depth: ulong = 256, max_alias_nodes: ulong = 1000000
+    text: String, path: String = "", max_depth: ulong = 256, max_alias_nodes: ulong = 1000000, merge_keys: bool = false
 ): Result<YamlValue, YamlError> {
     var parser = _YamlParser(text, path, max_depth, max_alias_nodes);
+    parser._merge_keys = merge_keys;
     var documents = parser.run();
     if (documents.is_err()) {
         return Result<YamlValue, YamlError>.err(documents.error());
@@ -122,7 +132,7 @@ export parse(
 ## Parses YAML 1.2 text holding any number of documents, each started by
 ## `---` or ended by `...`, into one `YamlValue` each.
 ##
-## Each document is read as `parse` reads one; anchors and `%TAG`
+## Each document is read as `parse` reads one, merge keys included; anchors and `%TAG`
 ## directives hold only in their own document.
 ##
 ## @param text the YAML text
@@ -131,6 +141,7 @@ export parse(
 ## @param max_depth how deeply collections may nest
 ## @param max_alias_nodes how many nodes the aliases of each document may
 ##   stand for in all
+## @param merge_keys whether a `<<` key merges mappings, as in YAML 1.1
 ## @returns the documents in order (none for empty text), or an error
 ##   naming the first problem and its line and column
 ## @example
@@ -140,9 +151,10 @@ export parse(
 ##     assert(documents.count == 2, "two documents");
 ##     assert(documents[1]["name"].as_string().value() == "b", "the second");
 export parse_all(
-    text: String, path: String = "", max_depth: ulong = 256, max_alias_nodes: ulong = 1000000
+    text: String, path: String = "", max_depth: ulong = 256, max_alias_nodes: ulong = 1000000, merge_keys: bool = false
 ): Result<Array<YamlValue>, YamlError> {
     var parser = _YamlParser(text, path, max_depth, max_alias_nodes);
+    parser._merge_keys = merge_keys;
     return parser.run();
 }
 
@@ -215,10 +227,12 @@ export _yaml_parse_noted(
     path: String,
     max_depth: ulong,
     max_alias_nodes: ulong,
+    merge_keys: bool,
     notes: _YamlNotes?,
     offsets: HashMap<String, ulong>?
 ): Result<YamlValue, YamlError> {
     var parser = _YamlParser(text, path, max_depth, max_alias_nodes);
+    parser._merge_keys = merge_keys;
     parser._notes = notes;
     parser._offsets = offsets;
     var documents = parser.run();
@@ -276,6 +290,11 @@ struct _YamlParser {
     ulong _depth;
     ulong _max_alias_nodes;
     ulong _expanded;
+    # With `merge_keys`: whether the last node read was a plain `<<`, and
+    # where each value began, by its path, for a merge's errors.
+    bool _merge_keys;
+    bool _merge_key;
+    HashMap<String, ulong> _starts;
     # The nodes read so far, aliases counted as the nodes they stand for.
     ulong _nodes;
     YamlError _error;
@@ -319,6 +338,7 @@ struct _YamlParser {
         _error = YamlError();
         _value = YamlValue.Null;
         _scalar = "";
+        _starts = HashMap<String, ulong>();
         _anchors = HashMap<String, YamlValue>();
         _anchor_sizes = HashMap<String, ulong>();
         _handles = HashMap<String, String>();
@@ -664,6 +684,7 @@ struct _YamlParser {
         var before = _nodes;
         _nodes = _nodes + 1;
         var members = OrderedMap<String, YamlValue>();
+        var merge = false;
         while (true) {
             if (_has_tab_indent(_position)) {
                 return _fail("a tab cannot indent YAML; use spaces");
@@ -671,12 +692,14 @@ struct _YamlParser {
             var comments = _take_pending();
             var key_at = _position;
             var key = "";
+            _merge_key = false;
             if (_at_indicator('?')) {
                 _position = _position + 1;
                 if (!_block_node(column as long, COMPACT, path + "?") || !_key_text(key_at)) {
                     return false;
                 }
                 key = _scalar;
+                merge = merge || (_merge_keys && _merge_key);
                 if (!_end_line(path + "?") || !_skip_to_content()) {
                     return false;
                 }
@@ -696,6 +719,7 @@ struct _YamlParser {
                     return false;
                 }
                 key = _scalar;
+                merge = merge || (_merge_keys && _merge_key);
                 if (!_block_node(column as long, KEYED, _yaml_path_key(path, key))) {
                     return false;
                 }
@@ -728,6 +752,9 @@ struct _YamlParser {
         }
         _file_end(path, column);
         _value = YamlValue.Mapping(members);
+        if (merge && !_merge(members, path)) {
+            return false;
+        }
         _inline = false;
         _depth = _depth - 1;
         _register(anchor, before);
@@ -1412,6 +1439,7 @@ struct _YamlParser {
         text: String, plain: bool, anchor: String, tag: String, tag_at: ulong, before: ulong, path: String
     ): bool {
         _nodes = _nodes + 1;
+        _merge_key = plain && tag.is_empty && text == "<<";
         if (tag.is_empty) {
             _value = plain ? _yaml_resolve(text) : YamlValue.String(text);
         } else if (tag == "!" || tag == CORE_TAG + "str") {
@@ -1603,8 +1631,53 @@ struct _YamlParser {
             );
         }
         _value = found.value();
+        _merge_key = false;
         _inline = true;
         _json_like = false;
+        return true;
+    }
+
+    # Puts in `_value` the mapping at `path` with its `<<` entry replaced by
+    # the keys of the mapping, or mappings, it names that `members` does not
+    # set itself, an earlier mapping winning over a later one.
+    _merge(members: OrderedMap<String, YamlValue>, path: String): bool {
+        var merge_path = _yaml_path_key(path, "<<");
+        var named = members["<<"];
+        var sources = Array<OrderedMap<String, YamlValue>>();
+        var single = named.as_mapping();
+        if (single.is_value()) {
+            sources.append(single.value());
+        } else {
+            var list = named.as_sequence();
+            if (list.is_empty()) {
+                return _fail_at("a merge key ('<<') must name a mapping or a list of mappings", _starts[merge_path]);
+            }
+            var entries = list.value();
+            for (var index in 0..entries.count) {
+                var source = entries[index].as_mapping();
+                if (source.is_empty()) {
+                    var at = _starts.try_get($"{merge_path}[{index}]").value_or(_starts[merge_path]);
+                    return _fail_at("a merge key's list ('<<') must hold only mappings", at);
+                }
+                sources.append(source.value());
+            }
+        }
+        var merged = OrderedMap<String, YamlValue>();
+        for (var (key, member) in members) {
+            if (key != "<<") {
+                merged[key] = member;
+                continue;
+            }
+            for (var source in sources) {
+                for (var (source_key, source_member) in source) {
+                    if (members.contains(source_key) || merged.contains(source_key)) {
+                        continue;
+                    }
+                    merged[source_key] = source_member;
+                }
+            }
+        }
+        _value = YamlValue.Mapping(merged);
         return true;
     }
 
@@ -1638,6 +1711,7 @@ struct _YamlParser {
         var close = sequence ? ']' : '}';
         var items = Array<YamlValue>();
         var members = OrderedMap<String, YamlValue>();
+        var merge = false;
         while (true) {
             if (!_skip_to_content()) {
                 return false;
@@ -1660,6 +1734,7 @@ struct _YamlParser {
                 }
             }
             var has_key = false;
+            _merge_key = false;
             var empty_key = _peek() == ':'
                 && (_is_space_or_end(_position + 1) || _is_flow_indicator(_at(_position + 1)));
             if ((explicit && (_peek() == ',' || _peek() == close))
@@ -1671,6 +1746,7 @@ struct _YamlParser {
             }
             var node = _value;
             var json_like = _json_like;
+            merge = merge || (!sequence && _merge_keys && _merge_key);
             var node_end = _position;
             if (!_skip_to_content()) {
                 return false;
@@ -1736,6 +1812,9 @@ struct _YamlParser {
         _flow = _flow - 1;
         _depth = _depth - 1;
         _value = sequence ? YamlValue.Sequence(items) : YamlValue.Mapping(members);
+        if (merge && !_merge(members, path)) {
+            return false;
+        }
         _inline = true;
         _json_like = true;
         _register(anchor, before);
@@ -1981,6 +2060,9 @@ struct _YamlParser {
 
     # Files the position as where the value at `path` is, for `decode`.
     _note_offset(path: String) {
+        if (_merge_keys) {
+            _starts[path] = _position;
+        }
         if (_offsets.is_value() && !_offsets.value().contains(path)) {
             _offsets.value()[path] = _position;
         }

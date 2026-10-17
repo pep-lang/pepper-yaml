@@ -30,6 +30,12 @@ One module, **`yaml`**:
   `[Tag("kind")]`, `[Untagged]`), exactly as `json.encode` and
   `json.decode` do. `to_yaml` and `from_yaml` convert to and from a
   `YamlValue`.
+- **`merge_keys = true`**, given to `parse`, `parse_all` or `decode`,
+  applies YAML 1.1 merge keys (`<<: *base`, `<<: [*a, *b]`): the
+  mapping's own keys win, an earlier mapping of a list wins over a later
+  one, and merged nodes count toward `max_alias_nodes`. Without it, `<<`
+  is an ordinary key, as YAML 1.2 says. `parse_document` never merges,
+  so it writes a `<<` line back as it was.
 - **`yaml.decode_text(bytes)`** decodes a file's bytes, UTF-8 or UTF-16,
   for `parse`.
 
@@ -99,7 +105,9 @@ main(): int {
   a key (`[a, b]: 1`, or `? - a`) is an error. Duplicate keys are an error.
 - Tags outside the core schema, such as `!!set`, `!!omap`, `!!binary` or
   application tags (`!point`), are errors.
-- YAML 1.1's merge key (`<<: *base`) is an ordinary key, as YAML 1.2 says.
+- YAML 1.1's merge key (`<<: *base`) is an ordinary key, as YAML 1.2
+  says, unless `merge_keys` is given. A `<<` inside a flow sequence's
+  single pair (`[<<: *a]`) never merges.
 - `YamlDocument` does not keep the spacing inside a line, comments inside
   a flow collection, anchors and aliases (each alias is written out in
   full), or directives; a value that changed is written in the default
@@ -139,7 +147,8 @@ tests/run.sh path/to/pepper
 
 runs the `[Test]` functions in `tests/` with `pepper test`: the parser
 (`parse_test.pep`), the writer (`write_test.pep`), documents
-(`document_test.pep`) and struct conversion (`convert_test.pep`).
+(`document_test.pep`), merge keys (`merge_test.pep`) and struct
+conversion (`convert_test.pep`).
 
 ## Decisions (from #280)
 

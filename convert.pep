@@ -103,6 +103,7 @@ export from_yaml<T>(value: YamlValue, unknown_keys: json.UnknownKeys = json.Unkn
 ## @param unknown_keys what to do with a key that names no property
 ## @param path the name of the text (a file name, say), which the error's
 ##   `to_string()` puts first
+## @param merge_keys whether a `<<` key merges mappings, as `parse` says
 ## @returns the value, or the first error: a syntax error, or a conversion
 ##   error with its path in the document; either has its line and column
 ## @example
@@ -128,11 +129,17 @@ export from_yaml<T>(value: YamlValue, unknown_keys: json.UnknownKeys = json.Unkn
 ##         return 0;
 ##     }
 export decode<T>(
-    text: String, unknown_keys: json.UnknownKeys = json.UnknownKeys.Ignore, path: String = ""
+    text: String, unknown_keys: json.UnknownKeys = json.UnknownKeys.Ignore, path: String = "", merge_keys: bool = false
 ): Result<T, YamlError> {
     var offsets = HashMap<String, ulong>();
     var parsed = _yaml_parse_noted(
-        text, path, 256, 1000000, Optional<_YamlNotes>.Empty, Optional<HashMap<String, ulong>>.Value(offsets)
+        text,
+        path,
+        256,
+        1000000,
+        merge_keys,
+        Optional<_YamlNotes>.Empty,
+        Optional<HashMap<String, ulong>>.Value(offsets)
     );
     if (parsed.is_err()) {
         return Result<T, YamlError>.err(parsed.error());
