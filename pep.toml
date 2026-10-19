@@ -2,5 +2,5 @@
 name = "yaml"
 version = "0.1.0"
 description = "YAML 1.2: read and write, comment-keeping round trips, and struct conversion"
-license = "MIT"
+license = "Apache-2.0"
 repository = "https://github.com/justinboswell/pepper-yaml"
