@@ -1,6 +1,6 @@
 # pepper-yaml
 
-YAML 1.2 for [Pepper](https://github.com/justinboswell/pepper): read YAML into
+YAML 1.2 for [Pepper](https://github.com/pep-lang/pepper): read YAML into
 a value, change it and write it back, edit a file without losing its
 comments, and convert structs to YAML and back. It has the same shape as
 the runtime's `json` and `toml` modules.
@@ -124,14 +124,14 @@ This repository is a package: `pep.toml` marks its root, and its root
 `yaml`:
 
 ```sh
-pepper package add justinboswell/pepper-yaml --name yaml
+pepper package add pep-lang/pepper-yaml --name yaml
 ```
 
 which writes
 
 ```toml
 [dependencies]
-yaml = { github = "justinboswell/pepper-yaml" }
+yaml = { github = "pep-lang/pepper-yaml" }
 ```
 
 Without a project, put a folder named `yaml` that holds (or links to) this
