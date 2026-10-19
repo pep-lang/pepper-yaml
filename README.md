@@ -1,10 +1,9 @@
 # pepper-yaml
 
-YAML 1.2 for [Pepper](https://github.com/justinboswell/pepper) (issue
-justinboswell/pepper#280): read YAML into a value, change it and write it
-back, edit a file without losing its comments, and convert structs to
-YAML and back. It has the same shape as the runtime's `json` and `toml`
-modules.
+YAML 1.2 for [Pepper](https://github.com/justinboswell/pepper): read YAML into
+a value, change it and write it back, edit a file without losing its
+comments, and convert structs to YAML and back. It has the same shape as
+the runtime's `json` and `toml` modules.
 
 One module, **`yaml`**:
 
@@ -113,8 +112,7 @@ main(): int {
   full), or directives; a value that changed is written in the default
   way. It holds one document.
 - There is no streaming (event) reader yet; the whole text is read into a
-  tree (Justin, 2026-10-02: it comes later, if a large-file use case shows
-  up).
+  tree. One can come later, if a large-file use case shows up.
 - Struct conversion goes through `json.JsonValue`, so it shares `json`'s
   rules and messages; a compile error for a type it cannot convert says
   "to JSON".
@@ -150,10 +148,13 @@ runs the `[Test]` functions in `tests/` with `pepper test`: the parser
 (`document_test.pep`), merge keys (`merge_test.pep`) and struct
 conversion (`convert_test.pep`).
 
-## Decisions (from #280)
+## Design
 
 - **A package**, fetched with `pepper package add`, rather than a runtime
-  module, since few programs need YAML (Justin, 2026-09-30).
+  module, since few programs need YAML.
 - **Key names keep their case**, and the attributes are the ones `json`
-  and `toml` share (Justin, 2026-09-30).
-- **Streaming comes later** (Justin, 2026-10-02).
+  and `toml` share.
+
+## License
+
+Apache-2.0; see [LICENSE](LICENSE).
