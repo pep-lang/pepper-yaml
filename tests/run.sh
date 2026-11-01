@@ -13,3 +13,7 @@ trap 'rm -rf "$build"' EXIT
 mkdir "$build/packages"
 ln -s "$root" "$build/packages/yaml"
 "$pepper" test -I "$build/packages" "$root/tests"
+
+# The Pepper book's example.
+"$pepper" build -I "$build/packages" "$root/examples/book/main.pep" -o "$build/book_example"
+"$build/book_example" | grep -qx "8080"
