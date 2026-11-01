@@ -10,8 +10,8 @@ main(): int {
         return 1;
     }
     var root = parsed.value();
-    print(root["server"]["port"].as_int().value());       # 8080
-    print(root["server"]["debug"].as_string().value());   # no
+    print(root["server"]["port"].as_int().value());      # 8080
+    print(root["server"]["debug"].as_string().value());  # no
     root["server"]["port"] = yaml.YamlValue.Integer(9090);
     print(root.to_string());
     return 0;
